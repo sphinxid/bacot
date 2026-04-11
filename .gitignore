@@ -1,0 +1,26 @@
+# Binaries
+bin/
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+*.test
+*.out
+
+# Go module download cache
+vendor/
+
+# IDE/editor directories
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

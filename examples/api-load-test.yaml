@@ -1,0 +1,37 @@
+name: "API Load Test"
+target: "https://httpbin.org"
+
+stages:
+  - duration: 10s
+    vus: 5
+  - duration: 30s
+    vus: 20
+  - duration: 10s
+    vus: 5
+
+scenarios:
+  - name: "GET anything"
+    method: GET
+    path: /anything
+    weight: 70
+    headers:
+      Accept: application/json
+    checks:
+      - status == 200
+      - duration < 2000
+
+  - name: "POST data"
+    method: POST
+    path: /post
+    weight: 30
+    body: '{"username":"test","value":42}'
+    headers:
+      Content-Type: application/json
+    checks:
+      - status == 200
+      - status != 500
+
+thresholds:
+  http_req_duration_p95: "< 3000ms"
+  http_req_failed: "< 5%"
+  http_req_duration_avg: "< 1000ms"
