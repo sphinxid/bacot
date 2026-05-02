@@ -26,20 +26,32 @@ type Config struct {
 }
 
 // Stage defines a load stage with a duration and number of virtual users.
+// When StartVUs is set (> 0 and != VUs), the engine linearly interpolates
+// the VU count from StartVUs to VUs over the stage duration (gradual ramp).
 type Stage struct {
 	Duration Duration `yaml:"duration"`
 	VUs      int      `yaml:"vus"`
+	StartVUs int      `yaml:"start_vus"` // Optional: starting VU count for linear ramp
+}
+
+// ThinkTime defines a pause inserted after each request in a scenario.
+// If only MinMs is set (MaxMs == 0), the pause is constant.
+// If both are set, the pause is uniformly random in [MinMs, MaxMs].
+type ThinkTime struct {
+	MinMs int `yaml:"min_ms"`
+	MaxMs int `yaml:"max_ms"`
 }
 
 // Scenario defines a single HTTP request scenario within a test.
 type Scenario struct {
-	Name    string            `yaml:"name"`
-	Method  string            `yaml:"method"`
-	Path    string            `yaml:"path"`
-	Weight  int               `yaml:"weight"`
-	Headers map[string]string `yaml:"headers"`
-	Body    string            `yaml:"body"`
-	Checks  []string          `yaml:"checks"`
+	Name      string            `yaml:"name"`
+	Method    string            `yaml:"method"`
+	Path      string            `yaml:"path"`
+	Weight    int               `yaml:"weight"`
+	Headers   map[string]string `yaml:"headers"`
+	Body      string            `yaml:"body"`
+	Checks    []string          `yaml:"checks"`
+	ThinkTime *ThinkTime        `yaml:"think_time"` // Optional pause after each request
 }
 
 // Duration is a wrapper around time.Duration that supports YAML unmarshaling

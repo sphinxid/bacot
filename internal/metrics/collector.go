@@ -8,18 +8,20 @@ import (
 
 // RequestResult holds the result of a single HTTP request.
 type RequestResult struct {
-	ScenarioName  string
-	StatusCode    int
+	ScenarioName   string
+	StatusCode     int
 	DurationMicros int64
 	ConnectMicros  int64
 	TLSMicros      int64
 	TTFBMicros     int64
-	BytesSent     int64
-	BytesRecv     int64
-	Error         error
-	ErrorType     string // "timeout", "refused", "dns", "http"
-	ChecksPassed  int
-	ChecksFailed  int
+	BytesSent      int64
+	BytesRecv      int64
+	Error          error
+	ErrorType      string // "timeout", "refused", "dns", "http"
+	ChecksPassed   int
+	ChecksFailed   int
+	ResponseBody    []byte            // Populated only when scenario has body checks
+	ResponseHeaders map[string]string // Populated only when scenario has header checks
 }
 
 // ScenarioMetrics holds per-scenario aggregated metrics.

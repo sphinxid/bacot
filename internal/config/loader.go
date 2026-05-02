@@ -103,6 +103,17 @@ func validate(cfg *Config) error {
 		if scenario.Weight < 0 {
 			return fmt.Errorf("scenario[%d]: weight must be >= 0", i)
 		}
+		if scenario.ThinkTime != nil {
+			if scenario.ThinkTime.MinMs < 0 {
+				return fmt.Errorf("scenario[%d]: think_time.min_ms must be >= 0", i)
+			}
+			if scenario.ThinkTime.MaxMs < 0 {
+				return fmt.Errorf("scenario[%d]: think_time.max_ms must be >= 0", i)
+			}
+			if scenario.ThinkTime.MaxMs > 0 && scenario.ThinkTime.MaxMs < scenario.ThinkTime.MinMs {
+				return fmt.Errorf("scenario[%d]: think_time.max_ms must be >= min_ms", i)
+			}
+		}
 		totalWeight += scenario.Weight
 	}
 

@@ -35,8 +35,18 @@ func (e *Engine) CurrentStage() int64 {
 	return e.stageIdx.Load()
 }
 
+// vuEntry holds a running VU's cancel function and done channel.
+type vuEntry struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
 // Run executes the full test plan. It blocks until the test finishes or ctx is cancelled.
 // All goroutines are guaranteed to exit before Run returns.
+//
+// During gradual ramps the engine adjusts the running VU pool incrementally:
+// spawning additional VUs when the count increases and cancelling excess VUs
+// when the count decreases. This avoids disrupting in-flight requests.
 func (e *Engine) Run(ctx context.Context) {
 	scheduler := NewScheduler(e.cfg)
 	schedWg := &sync.WaitGroup{}
@@ -47,55 +57,72 @@ func (e *Engine) Run(ctx context.Context) {
 
 	go scheduler.Run(schedCtx, schedWg)
 
-	var vuWg sync.WaitGroup
-	var vuCancel context.CancelFunc
-	var vuCtx context.Context
+	// vuCtx / vuCancel is shared across all running VUs so we can kill them
+	// all at once when the test ends.
+	vuCtx, vuCancel := context.WithCancel(ctx)
+	defer vuCancel()
 
-	// Track current VUs so we can cancel old ones on stage transitions
-	type vuPool struct {
-		cancel context.CancelFunc
-		wg     *sync.WaitGroup
+	var vuWg sync.WaitGroup
+
+	// Pool of currently running VUs, indexed sequentially.
+	// We append when scaling up; pop+cancel when scaling down.
+	pool := make([]vuEntry, 0, 64)
+	nextID := 0
+
+	spawnVU := func() {
+		id := nextID
+		nextID++
+		vu := NewVU(id, e.cfg, e.collector)
+		childCtx, childCancel := context.WithCancel(vuCtx)
+		done := make(chan struct{})
+		entry := vuEntry{cancel: childCancel, done: done}
+		pool = append(pool, entry)
+		vuWg.Add(1)
+		go func() {
+			defer vuWg.Done()
+			defer close(done)
+			vu.Run(childCtx)
+		}()
 	}
-	var currentPool *vuPool
+
+	cancelVU := func() {
+		if len(pool) == 0 {
+			return
+		}
+		last := pool[len(pool)-1]
+		pool = pool[:len(pool)-1]
+		last.cancel()
+		// Wait for the VU to finish its current in-flight request before returning
+		// so activeVUs stays accurate. Use a non-blocking drain in case it already
+		// exited.
+		<-last.done
+	}
 
 	for event := range scheduler.Events() {
 		e.stageIdx.Store(int64(event.StageIndex))
 
-		// Cancel previous stage VUs
-		if currentPool != nil {
-			currentPool.cancel()
-			currentPool.wg.Wait()
+		target := event.VUs
+		current := len(pool)
+
+		for current < target {
+			spawnVU()
+			current++
+		}
+		for current > target {
+			cancelVU()
+			current--
 		}
 
-		// Create stage context that lives for the stage duration
-		vuCtx, vuCancel = context.WithCancel(ctx)
-		stageWg := &sync.WaitGroup{}
-		currentPool = &vuPool{cancel: vuCancel, wg: stageWg}
-
-		vus := event.VUs
-		e.activeVUs.Store(int64(vus))
-
-		for i := 0; i < vus; i++ {
-			vu := NewVU(i, e.cfg, e.collector)
-			stageWg.Add(1)
-			vuWg.Add(1)
-			go func(v *VU) {
-				defer stageWg.Done()
-				defer vuWg.Done()
-				v.Run(vuCtx)
-			}(vu)
-		}
+		e.activeVUs.Store(int64(target))
 	}
 
-	// Cancel the last stage's VUs once the scheduler channel closes (all stages done).
-	if currentPool != nil {
-		currentPool.cancel()
-		currentPool.wg.Wait()
+	// All stages done — cancel every remaining VU.
+	for len(pool) > 0 {
+		cancelVU()
 	}
 
 	// Wait for all VUs to finish draining in-flight requests.
 	vuWg.Wait()
-	// schedWg is implicitly done: scheduler closed its channel before we got here.
 	schedWg.Wait()
 	e.activeVUs.Store(0)
 }

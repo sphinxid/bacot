@@ -12,6 +12,19 @@ import (
 	"github.com/sphinxid/bacot/internal/metrics"
 )
 
+// thinkTimeDuration computes the think-time sleep for a scenario, using the
+// VU's own RNG for randomness. Returns 0 if no think time is configured.
+func thinkTimeDuration(tt *config.ThinkTime, rng *rand.Rand) time.Duration {
+	if tt == nil || tt.MinMs <= 0 {
+		return 0
+	}
+	if tt.MaxMs <= 0 || tt.MaxMs == tt.MinMs {
+		return time.Duration(tt.MinMs) * time.Millisecond
+	}
+	rangeMs := tt.MaxMs - tt.MinMs
+	return time.Duration(tt.MinMs+rng.Intn(rangeMs+1)) * time.Millisecond //nolint:gosec
+}
+
 // VU is a virtual user that executes HTTP requests in a loop.
 type VU struct {
 	id        int
@@ -57,11 +70,13 @@ func (v *VU) Run(ctx context.Context) {
 		url := v.cfg.Target + scenario.Path
 
 		spec := httpclient.RequestSpec{
-			Method:  scenario.Method,
-			URL:     url,
-			Headers: scenario.Headers,
-			Body:    scenario.Body,
-			Name:    scenario.Name,
+			Method:         scenario.Method,
+			URL:            url,
+			Headers:        scenario.Headers,
+			Body:           scenario.Body,
+			Name:           scenario.Name,
+			CaptureBody:    checks.NeedsBody(scenario.Checks),
+			CaptureHeaders: checks.NeedsHeaders(scenario.Checks),
 		}
 
 		result := httpclient.Execute(ctx, v.client, spec)
@@ -73,6 +88,8 @@ func (v *VU) Run(ctx context.Context) {
 			_, passed, failed := eval.Evaluate(checks.Response{
 				StatusCode: result.StatusCode,
 				DurationMs: durationMs,
+				Body:       result.ResponseBody,
+				Headers:    result.ResponseHeaders,
 			})
 			result.ChecksPassed = passed
 			result.ChecksFailed = failed
@@ -80,11 +97,22 @@ func (v *VU) Run(ctx context.Context) {
 
 		v.collector.Record(result)
 
-		// Brief yield to avoid busy-spinning on very fast endpoints
-		select {
-		case <-ctx.Done():
-			return
-		default:
+		// Think time: optional pause between requests, respects context cancellation.
+		if sleep := thinkTimeDuration(scenario.ThinkTime, v.rng); sleep > 0 {
+			timer := time.NewTimer(sleep)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+		} else {
+			// Brief yield to avoid busy-spinning on very fast endpoints.
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 		}
 	}
 }
