@@ -1,12 +1,15 @@
 name: "API Load Test"
 target: "https://httpbin.org"
 
+# Gradual ramp-up: 5 → 20 VUs over 10 s, sustain, then ramp down
 stages:
   - duration: 10s
-    vus: 5
+    start_vus: 5
+    vus: 20
   - duration: 30s
     vus: 20
   - duration: 10s
+    start_vus: 20
     vus: 5
 
 scenarios:
@@ -19,6 +22,13 @@ scenarios:
     checks:
       - status == 200
       - duration < 2000
+      - body_contains "url"                  # response body must mention "url"
+      - json_path "$.url" == "https://httpbin.org/anything"
+      - header "Content-Type" == "application/json"
+    # Simulate user reading the response before the next request
+    think_time:
+      min_ms: 200
+      max_ms: 800
 
   - name: "POST data"
     method: POST
@@ -30,6 +40,10 @@ scenarios:
     checks:
       - status == 200
       - status != 500
+      - body_contains "username"             # echo back contains our field
+      - json_path "$.json.value" == 42       # httpbin echoes JSON body under $.json
+    think_time:
+      min_ms: 500                            # constant 500 ms pause
 
 thresholds:
   http_req_duration_p95: "< 3000ms"

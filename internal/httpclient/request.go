@@ -18,11 +18,13 @@ import (
 
 // RequestSpec defines the parameters of an HTTP request to execute.
 type RequestSpec struct {
-	Method  string
-	URL     string
-	Headers map[string]string
-	Body    string
-	Name    string
+	Method          string
+	URL             string
+	Headers         map[string]string
+	Body            string
+	Name            string
+	CaptureBody     bool // When true, response body is stored in RequestResult.ResponseBody
+	CaptureHeaders  bool // When true, response headers are stored in RequestResult.ResponseHeaders
 }
 
 // Execute performs the HTTP request described by spec using the given client.
@@ -91,13 +93,32 @@ func Execute(ctx context.Context, client *http.Client, spec RequestSpec) metrics
 	}
 	defer resp.Body.Close()
 
-	// Read and discard body to allow connection reuse, counting bytes
-	n, _ := io.Copy(io.Discard, resp.Body)
+	// Read body: capture it when needed for checks, otherwise discard.
+	var n int64
+	if spec.CaptureBody {
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr == nil {
+			result.ResponseBody = bodyBytes
+		}
+		n = int64(len(bodyBytes))
+	} else {
+		n, _ = io.Copy(io.Discard, resp.Body)
+	}
 	total := time.Since(start)
 
 	result.StatusCode = resp.StatusCode
 	result.BytesRecv = n
 	result.DurationMicros = total.Microseconds()
+
+	if spec.CaptureHeaders {
+		hdrs := make(map[string]string, len(resp.Header))
+		for k, vals := range resp.Header {
+			if len(vals) > 0 {
+				hdrs[k] = vals[0]
+			}
+		}
+		result.ResponseHeaders = hdrs
+	}
 
 	if !dnsStart.IsZero() && !dnsDone.IsZero() {
 		result.ConnectMicros = dnsDone.Sub(dnsStart).Microseconds()

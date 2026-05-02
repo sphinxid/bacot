@@ -85,7 +85,7 @@ thresholds:
 
 ## `stages`
 
-Each stage sets a VU count that persists for its duration. Stages run sequentially; VU transitions are instantaneous.
+Each stage controls the number of active virtual users for its duration. Stages run sequentially.
 
 ```yaml
 stages:
@@ -100,7 +100,8 @@ stages:
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `duration` | duration string | **Yes** | How long this stage lasts. Must be `> 0`. |
-| `vus` | int | **Yes** | Number of virtual users active during this stage. Must be `>= 1`. |
+| `vus` | int | **Yes** | Target number of virtual users. Must be `>= 1`. |
+| `start_vus` | int | No | Starting VU count for a **gradual ramp**. The engine linearly interpolates the VU count from `start_vus` to `vus` over the stage duration (one adjustment per second). |
 
 **Duration format:** Go duration strings — `10s`, `1m`, `1m30s`, `2h`, `500ms`.
 
@@ -111,7 +112,7 @@ stages:
     vus: 50
 ```
 
-**Multi-stage (ramp pattern):**
+**Multi-stage (instant step transitions):**
 ```yaml
 stages:
   - duration: 30s   # warm-up
@@ -121,6 +122,21 @@ stages:
   - duration: 30s   # cool-down
     vus: 10
 ```
+
+**Gradual ramp-up / ramp-down (with `start_vus`):**
+```yaml
+stages:
+  - duration: 30s     # ramp up 1 → 50 VUs over 30 s
+    start_vus: 1
+    vus: 50
+  - duration: 2m      # sustain 50 VUs
+    vus: 50
+  - duration: 30s     # ramp down 50 → 5 VUs
+    start_vus: 50
+    vus: 5
+```
+
+When `start_vus` equals `vus` or is `0`, the stage behaves as an instant transition.
 
 ---
 
@@ -161,6 +177,29 @@ scenarios:
 | `headers` | map | No | HTTP headers sent with every request in this scenario |
 | `body` | string | No | Request body. String literal or `@/path/to/file` for file content. |
 | `checks` | list | No | Per-response assertions. See [Checks](checks.md). |
+| `think_time` | object | No | Pause inserted after each request (simulates user think time). |
+
+#### `think_time` fields
+
+| Field | Type | Description |
+|---|---|---|
+| `min_ms` | int | Minimum pause in milliseconds (required when using `think_time`). |
+| `max_ms` | int | Maximum pause in ms. If `0` or omitted, pause is constant `min_ms`. If set and `> min_ms`, pause is uniformly random in `[min_ms, max_ms]`. |
+
+**Constant 500 ms pause:**
+```yaml
+think_time:
+  min_ms: 500
+```
+
+**Random pause between 200 ms and 1 s:**
+```yaml
+think_time:
+  min_ms: 200
+  max_ms: 1000
+```
+
+Think time applies **after** the response is received and recorded — it does not inflate latency metrics.
 
 ### Supported HTTP methods
 

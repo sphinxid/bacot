@@ -139,6 +139,106 @@ func TestLoadInline_MissingURL(t *testing.T) {
 	}
 }
 
+func TestLoad_StartVUs_ParsedFromYAML(t *testing.T) {
+	yaml := `
+target: "https://example.com"
+stages:
+  - duration: 30s
+    vus: 50
+    start_vus: 5
+scenarios:
+  - name: "test"
+    path: /
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.Stages[0].StartVUs != 5 {
+		t.Errorf("StartVUs: want 5, got %d", cfg.Stages[0].StartVUs)
+	}
+	if cfg.Stages[0].VUs != 50 {
+		t.Errorf("VUs: want 50, got %d", cfg.Stages[0].VUs)
+	}
+}
+
+func TestLoad_ThinkTime_Valid(t *testing.T) {
+	yaml := `
+target: "https://example.com"
+stages:
+  - duration: 10s
+    vus: 5
+scenarios:
+  - name: "test"
+    path: /
+    think_time:
+      min_ms: 100
+      max_ms: 500
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	tt := cfg.Scenarios[0].ThinkTime
+	if tt == nil {
+		t.Fatal("expected ThinkTime to be set")
+	}
+	if tt.MinMs != 100 {
+		t.Errorf("MinMs: want 100, got %d", tt.MinMs)
+	}
+	if tt.MaxMs != 500 {
+		t.Errorf("MaxMs: want 500, got %d", tt.MaxMs)
+	}
+}
+
+func TestLoad_ThinkTime_Constant(t *testing.T) {
+	yaml := `
+target: "https://example.com"
+stages:
+  - duration: 10s
+    vus: 5
+scenarios:
+  - name: "test"
+    path: /
+    think_time:
+      min_ms: 200
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	tt := cfg.Scenarios[0].ThinkTime
+	if tt == nil {
+		t.Fatal("expected ThinkTime to be set")
+	}
+	if tt.MinMs != 200 {
+		t.Errorf("MinMs: want 200, got %d", tt.MinMs)
+	}
+}
+
+func TestLoad_ThinkTime_InvalidRange(t *testing.T) {
+	yaml := `
+target: "https://example.com"
+stages:
+  - duration: 10s
+    vus: 5
+scenarios:
+  - name: "test"
+    path: /
+    think_time:
+      min_ms: 500
+      max_ms: 100
+`
+	path := writeTempYAML(t, yaml)
+	_, err := Load(path)
+	if err == nil {
+		t.Error("expected error when max_ms < min_ms")
+	}
+}
+
 func TestTotalDuration(t *testing.T) {
 	cfg := &Config{
 		Stages: []Stage{
