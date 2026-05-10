@@ -43,6 +43,7 @@ func NewVU(id int, cfg *config.Config, collector *metrics.Collector) *VU {
 		MaxRedirects:   cfg.MaxRedirects,
 		HTTP2:          cfg.HTTP2,
 		KeepAlive:      cfg.KeepAlive,
+		EnableCookies:  cfg.Cookies,
 	}
 	return &VU{
 		id:        id,

@@ -239,6 +239,135 @@ scenarios:
 	}
 }
 
+func TestLoad_EnvVar_Target(t *testing.T) {
+	t.Setenv("TARGET_URL", "https://env.example.com")
+	yaml := `
+target: "${TARGET_URL}"
+stages:
+  - duration: 5s
+    vus: 1
+scenarios:
+  - name: "test"
+    path: /
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.Target != "https://env.example.com" {
+		t.Errorf("Target: want https://env.example.com, got %s", cfg.Target)
+	}
+}
+
+func TestLoad_EnvVar_Scenario(t *testing.T) {
+	t.Setenv("API_PATH", "users")
+	yaml := `
+target: "https://example.com"
+stages:
+  - duration: 5s
+    vus: 1
+scenarios:
+  - name: "test"
+    path: "/api/${API_PATH}"
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.Scenarios[0].Path != "/api/users" {
+		t.Errorf("Path: want /api/users, got %s", cfg.Scenarios[0].Path)
+	}
+}
+
+func TestLoad_EnvVar_Header(t *testing.T) {
+	t.Setenv("AUTH_TOKEN", "secret123")
+	yaml := `
+target: "https://example.com"
+stages:
+  - duration: 5s
+    vus: 1
+scenarios:
+  - name: "test"
+    path: /
+    headers:
+      Authorization: "Bearer ${AUTH_TOKEN}"
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	got := cfg.Scenarios[0].Headers["Authorization"]
+	if got != "Bearer secret123" {
+		t.Errorf("Authorization header: want \"Bearer secret123\", got %q", got)
+	}
+}
+
+func TestLoad_EnvVar_Unset(t *testing.T) {
+	// Ensure the variable is definitely not set
+	os.Unsetenv("UNSET_VAR_XYZ")
+	yaml := `
+target: "https://example.com"
+stages:
+  - duration: 5s
+    vus: 1
+scenarios:
+  - name: "test"
+    path: "/path/${UNSET_VAR_XYZ}/end"
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.Scenarios[0].Path != "/path//end" {
+		t.Errorf("Path: want /path//end, got %s", cfg.Scenarios[0].Path)
+	}
+}
+
+func TestLoad_Cookies_Default(t *testing.T) {
+	yaml := `
+target: "https://example.com"
+stages:
+  - duration: 5s
+    vus: 1
+scenarios:
+  - name: "test"
+    path: /
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.Cookies != false {
+		t.Errorf("Cookies default: want false, got %v", cfg.Cookies)
+	}
+}
+
+func TestLoad_Cookies_Enabled(t *testing.T) {
+	yaml := `
+target: "https://example.com"
+stages:
+  - duration: 5s
+    vus: 1
+scenarios:
+  - name: "test"
+    path: /
+cookies: true
+`
+	path := writeTempYAML(t, yaml)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.Cookies != true {
+		t.Errorf("Cookies enabled: want true, got %v", cfg.Cookies)
+	}
+}
+
 func TestTotalDuration(t *testing.T) {
 	cfg := &Config{
 		Stages: []Stage{

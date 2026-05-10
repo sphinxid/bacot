@@ -121,10 +121,10 @@ func Execute(ctx context.Context, client *http.Client, spec RequestSpec) metrics
 	}
 
 	if !dnsStart.IsZero() && !dnsDone.IsZero() {
-		result.ConnectMicros = dnsDone.Sub(dnsStart).Microseconds()
+		result.DNSMicros = dnsDone.Sub(dnsStart).Microseconds()
 	}
 	if !connectStart.IsZero() && !connectDone.IsZero() {
-		result.ConnectMicros += connectDone.Sub(connectStart).Microseconds()
+		result.TCPMicros = connectDone.Sub(connectStart).Microseconds()
 	}
 	if !tlsStart.IsZero() && !tlsDone.IsZero() {
 		result.TLSMicros = tlsDone.Sub(tlsStart).Microseconds()

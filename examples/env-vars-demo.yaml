@@ -1,0 +1,107 @@
+# env-vars-demo.yaml — demonstrates environment variable interpolation in bacot
+#
+# Required env vars (must be set before running):
+#   TARGET_URL   — base URL of the API under test
+#   API_TOKEN    — Bearer token for authenticated endpoints
+#   USERNAME     — login username
+#   PASSWORD     — login password
+#
+# Optional env vars:
+#   TEST_NAME    — override the test display name
+#   ENVIRONMENT  — e.g. "staging" or "production" (used in checks)
+#
+# Example usage:
+#   TARGET_URL=https://httpbin.org \
+#   API_TOKEN=mytoken123 \
+#   USERNAME=testuser \
+#   PASSWORD=secret \
+#   ENVIRONMENT=staging \
+#   bacot run examples/env-vars-demo.yaml
+
+name: "$TEST_NAME"
+target: "$TARGET_URL"
+
+# HTTP options
+timeout: 15s
+connect_timeout: 5s
+insecure: false
+http2: false
+
+# Per-VU cookie jar — sessions are maintained across requests within the same VU.
+# This means a VU that "logs in" will carry the session cookie to later requests.
+cookies: true
+
+# Load profile: gentle warm-up → sustained load → cool-down
+stages:
+  - duration: 10s       # ramp from 2 → 10 VUs
+    start_vus: 2
+    vus: 10
+  - duration: 30s       # sustain at 10 VUs
+    vus: 10
+  - duration: 10s       # ramp back down to 2 VUs
+    start_vus: 10
+    vus: 2
+
+scenarios:
+  # ── Unauthenticated health check ──────────────────────────────────────────
+  - name: "Health check"
+    method: GET
+    path: /get
+    weight: 20
+    headers:
+      Accept: application/json
+      # Custom header with env var — useful to tag requests by environment
+      X-Environment: "$ENVIRONMENT"
+    checks:
+      - status == 200
+      - duration < 1000
+      - header "Content-Type" == "application/json"
+    think_time:
+      min_ms: 100
+      max_ms: 300
+
+  # ── Authenticated GET using Bearer token from env ─────────────────────────
+  - name: "Authenticated GET"
+    method: GET
+    path: /anything
+    weight: 50
+    headers:
+      Accept: application/json
+      # API_TOKEN is injected at runtime — never hardcode secrets in YAML
+      Authorization: "Bearer $API_TOKEN"
+      X-Environment: "$ENVIRONMENT"
+    checks:
+      - status == 200
+      - duration < 2000
+      - body_contains "Authorization"           # httpbin echoes request headers
+      - body_matches "Bearer [A-Za-z0-9]+"      # token appears in echoed headers
+      - header "Content-Type" == "application/json"
+    think_time:
+      min_ms: 200
+      max_ms: 600
+
+  # ── POST login using credentials from env ────────────────────────────────
+  - name: "POST login"
+    method: POST
+    path: /post
+    weight: 30
+    # USERNAME and PASSWORD injected from environment
+    body: '{"username":"$USERNAME","password":"$PASSWORD","env":"$ENVIRONMENT"}'
+    headers:
+      Content-Type: application/json
+      Accept: application/json
+    checks:
+      - status == 200
+      - duration < 2000
+      - body_contains "username"                # httpbin echoes JSON body
+      - json_path "$.json.username" == "$USERNAME"
+      - json_path "$.json.env" == "$ENVIRONMENT"
+    think_time:
+      min_ms: 300
+      max_ms: 800
+
+# Pass/fail criteria — CI exits with code 1 if any threshold fails
+thresholds:
+  http_req_duration_p95: "< 2000ms"
+  http_req_duration_avg: "< 800ms"
+  http_req_failed:       "< 2%"

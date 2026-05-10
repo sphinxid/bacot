@@ -80,6 +80,39 @@ thresholds:
 | `insecure` | bool | No | Skip TLS verification (default: `false`) |
 | `max_redirects` | int | No | Max redirects to follow (default: `10`) |
 | `http2` | bool | No | Enable HTTP/2 (default: `false`) |
+| `cookies` | bool | No | Enable per-VU cookie jar (default: `false`). See [Cookie handling](#cookie-handling). |
+
+---
+
+## Environment variable interpolation
+
+Any string field in the YAML script supports `${VAR_NAME}` (or `$VAR_NAME`) substitution. Values are expanded from the process environment **before** validation, so you can inject secrets, target URLs, or tokens without hardcoding them.
+
+```yaml
+name: "${TEST_NAME}"
+target: "${TARGET_URL}"
+
+scenarios:
+  - name: "Authenticated GET"
+    method: GET
+    path: "${API_PATH}"
+    headers:
+      Authorization: "Bearer ${API_TOKEN}"
+    checks:
+      - status == 200
+```
+
+Run with:
+```sh
+TARGET_URL=https://api.example.com API_TOKEN=secret123 bacot run script.yaml
+```
+
+**Notes:**
+- Unset variables expand to an empty string — always provide a fallback literal or ensure the variable is set before running
+- Both `${VAR}` and `$VAR` forms are supported
+- Bash-style default syntax (`${VAR:-default}`) is **not** supported — `os.ExpandEnv` does not interpret it
+- Interpolation applies to: `name`, `target`, scenario `name`/`method`/`path`/`body`/`headers` values/`checks` strings, and threshold expressions
+- Duration fields, integers, and booleans are not interpolated
 
 ---
 
@@ -271,6 +304,62 @@ All duration fields (`timeout`, `connect_timeout`, stage `duration`) use Go's du
 | `1m30s` | 1 minute 30 seconds |
 | `2h` | 2 hours |
 | `90s` | 90 seconds |
+
+---
+
+## Cookie handling
+
+When `cookies: true` is set, each VU gets its own isolated cookie jar. Cookies set by `Set-Cookie` response headers are automatically stored and sent on subsequent requests from the same VU — enabling session-based flows like login → authenticated requests.
+
+```yaml
+name: "Session flow"
+target: "https://api.example.com"
+cookies: true          # each VU maintains its own session cookies
+
+stages:
+  - duration: 60s
+    vus: 20
+
+scenarios:
+  - name: "Login"
+    method: POST
+    path: /auth/login
+    weight: 10
+    body: '{"user":"test","pass":"secret"}'
+    headers:
+      Content-Type: application/json
+    checks:
+      - status == 200
+
+  - name: "Get profile"
+    method: GET
+    path: /me
+    weight: 90
+    checks:
+      - status == 200    # succeeds because session cookie is sent automatically
+```
+
+**Notes:**
+- Default is `false` — no cookies are stored or sent (existing behaviour preserved)
+- Each VU has its own independent jar; cookies do not leak between VUs
+- Uses `net/http/cookiejar` with the public suffix list for correct domain scoping
+
+---
+
+## Request timing breakdown
+
+bacot collects granular HTTP phase timings for every request and surfaces them in the terminal summary, JSON report, and HTML report:
+
+| Phase | Description |
+|---|---|
+| **DNS** | Time to resolve the hostname |
+| **TCP Connect** | Time to establish the TCP connection |
+| **TLS Handshake** | Time to complete the TLS handshake (HTTPS only) |
+| **TTFB** | Time to first byte — from request sent to first response byte received |
+
+These appear in the terminal summary as `http_req_connecting` and `http_req_ttfb`, in the JSON report under `summary.timing_breakdown`, and as a grouped bar chart in the HTML report.
+
+Phases that did not occur (e.g. TLS on plain HTTP, or DNS when a connection was reused) are omitted from the output.
 
 ---
 

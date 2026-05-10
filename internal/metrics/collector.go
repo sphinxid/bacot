@@ -11,7 +11,8 @@ type RequestResult struct {
 	ScenarioName   string
 	StatusCode     int
 	DurationMicros int64
-	ConnectMicros  int64
+	DNSMicros      int64
+	TCPMicros      int64
 	TLSMicros      int64
 	TTFBMicros     int64
 	BytesSent      int64
@@ -84,7 +85,11 @@ type Collector struct {
 	ChecksPassed   atomic.Int64
 	ChecksFailed   atomic.Int64
 
-	Latency    *LatencyHistogram
+	Latency     *LatencyHistogram
+	DNSLatency  *LatencyHistogram
+	TCPLatency  *LatencyHistogram
+	TLSLatency  *LatencyHistogram
+	TTFBLatency *LatencyHistogram
 	StatusCodes *StatusCodeCount
 	TimeSeries  *TimeSeries
 
@@ -97,6 +102,10 @@ func NewCollector() *Collector {
 	return &Collector{
 		startTime:   time.Now(),
 		Latency:     NewLatencyHistogram(),
+		DNSLatency:  NewLatencyHistogram(),
+		TCPLatency:  NewLatencyHistogram(),
+		TLSLatency:  NewLatencyHistogram(),
+		TTFBLatency: NewLatencyHistogram(),
 		StatusCodes: NewStatusCodeCount(),
 		TimeSeries:  NewTimeSeries(),
 		scenarios:   make(map[string]*ScenarioMetrics),
@@ -121,6 +130,18 @@ func (c *Collector) Record(r RequestResult) {
 
 	if r.DurationMicros > 0 {
 		c.Latency.RecordMicros(r.DurationMicros)
+	}
+	if r.DNSMicros > 0 {
+		c.DNSLatency.RecordMicros(r.DNSMicros)
+	}
+	if r.TCPMicros > 0 {
+		c.TCPLatency.RecordMicros(r.TCPMicros)
+	}
+	if r.TLSMicros > 0 {
+		c.TLSLatency.RecordMicros(r.TLSMicros)
+	}
+	if r.TTFBMicros > 0 {
+		c.TTFBLatency.RecordMicros(r.TTFBMicros)
 	}
 	if r.StatusCode > 0 {
 		c.StatusCodes.Inc(r.StatusCode)

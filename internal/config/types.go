@@ -23,6 +23,7 @@ type Config struct {
 	MaxRedirects   int           `yaml:"max_redirects"`
 	HTTP2          bool          `yaml:"http2"`
 	KeepAlive      bool          `yaml:"keep_alive"`
+	Cookies        bool          `yaml:"cookies"`
 }
 
 // Stage defines a load stage with a duration and number of virtual users.

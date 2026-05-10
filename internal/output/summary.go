@@ -48,6 +48,9 @@ func PrintSummary(out io.Writer, collector *metrics.Collector, thresholdResults 
 		fmt.Sprintf("avg=%.0fms   min=%.0fms   p90=%.0fms   p95=%.0fms   p99=%.0fms",
 			avgMs, minMs, p90Ms, p95Ms, p99Ms))
 
+	// Timing breakdown: DNS, TCP, TLS, TTFB
+	printTimingBreakdown(out, collector)
+
 	failStr := fmt.Sprintf("%.2f%%   (%s of %s)", failPct, formatInt(failures), formatInt(total))
 	if failPct > 0 {
 		printMetricColored(out, "http_req_failed", failStr, red)
@@ -240,6 +243,38 @@ func PrintScenarioReport(out io.Writer, collector *metrics.Collector) {
 
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, sep)
+}
+
+// printTimingBreakdown prints per-phase timing (DNS, TCP, TLS, TTFB) when data is available.
+func printTimingBreakdown(out io.Writer, collector *metrics.Collector) {
+	dnsSnap := collector.DNSLatency.Snapshot()
+	tcpSnap := collector.TCPLatency.Snapshot()
+	tlsSnap := collector.TLSLatency.Snapshot()
+	ttfbSnap := collector.TTFBLatency.Snapshot()
+
+	// Build connecting phases line (DNS + TCP + TLS)
+	var connectParts []string
+	if dnsSnap.Count > 0 {
+		connectParts = append(connectParts, fmt.Sprintf("dns=avg=%.0fms p95=%.0fms",
+			dnsSnap.Mean/1000.0, float64(dnsSnap.P95)/1000.0))
+	}
+	if tcpSnap.Count > 0 {
+		connectParts = append(connectParts, fmt.Sprintf("tcp=avg=%.0fms p95=%.0fms",
+			tcpSnap.Mean/1000.0, float64(tcpSnap.P95)/1000.0))
+	}
+	if tlsSnap.Count > 0 {
+		connectParts = append(connectParts, fmt.Sprintf("tls=avg=%.0fms p95=%.0fms",
+			tlsSnap.Mean/1000.0, float64(tlsSnap.P95)/1000.0))
+	}
+	if len(connectParts) > 0 {
+		printMetric(out, "http_req_connecting", strings.Join(connectParts, "  "))
+	}
+
+	if ttfbSnap.Count > 0 {
+		printMetric(out, "http_req_ttfb",
+			fmt.Sprintf("avg=%.0fms   p95=%.0fms",
+				ttfbSnap.Mean/1000.0, float64(ttfbSnap.P95)/1000.0))
+	}
 }
 
 func printMetric(out io.Writer, name, value string) {

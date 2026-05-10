@@ -21,6 +21,8 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
 
+	interpolateEnv(&cfg)
+
 	if err := validate(&cfg); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
@@ -137,6 +139,7 @@ func applyDefaults(cfg *Config) {
 		cfg.MaxRedirects = 10
 	}
 	cfg.KeepAlive = true
+	// cfg.Cookies defaults to false — no change needed
 
 	for i, scenario := range cfg.Scenarios {
 		if scenario.Method == "" {
@@ -179,4 +182,32 @@ func (cfg *Config) WeightTotal() int {
 		total += s.Weight
 	}
 	return total
+}
+
+// interpolateEnv expands environment variable references (${VAR} and $VAR)
+// in all string fields of the Config using os.ExpandEnv. It is called after
+// YAML unmarshalling and before validation so that env vars can be used
+// anywhere a string value is expected.
+func interpolateEnv(cfg *Config) {
+	cfg.Name = os.ExpandEnv(cfg.Name)
+	cfg.Target = os.ExpandEnv(cfg.Target)
+
+	for k, v := range cfg.Thresholds {
+		cfg.Thresholds[k] = os.ExpandEnv(v)
+	}
+
+	for i, s := range cfg.Scenarios {
+		cfg.Scenarios[i].Name = os.ExpandEnv(s.Name)
+		cfg.Scenarios[i].Method = os.ExpandEnv(s.Method)
+		cfg.Scenarios[i].Path = os.ExpandEnv(s.Path)
+		cfg.Scenarios[i].Body = os.ExpandEnv(s.Body)
+
+		for k, v := range s.Headers {
+			cfg.Scenarios[i].Headers[k] = os.ExpandEnv(v)
+		}
+
+		for j, check := range s.Checks {
+			cfg.Scenarios[i].Checks[j] = os.ExpandEnv(check)
+		}
+	}
 }

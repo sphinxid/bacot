@@ -93,6 +93,7 @@ const htmlTemplate = `<!DOCTYPE html>
 </div>
 <div class="container">
   <div id="summary-cards" class="grid"></div>
+  <div class="section"><h2>Request Timing Breakdown</h2><div class="chart-container"><canvas id="timingChart"></canvas></div></div>
   <div class="charts-row">
     <div class="section"><h2>Requests per Second</h2><div class="chart-container"><canvas id="rpsChart"></canvas></div></div>
     <div class="section"><h2>Latency Over Time (p95)</h2><div class="chart-container"><canvas id="latencyChart"></canvas></div></div>
@@ -118,6 +119,7 @@ const cards = [
   { label: "p99 Latency", value: summary.latency.p99_ms.toFixed(0) + "ms", sub: "min: " + summary.latency.min_ms.toFixed(0) + "ms" },
   { label: "Data Sent", value: fmtBytes(summary.bytes_sent), sub: "↑ transferred" },
   { label: "Data Received", value: fmtBytes(summary.bytes_received), sub: "↓ received" },
+  { label: "TTFB (avg)", value: (summary.timing_breakdown?.ttfb_avg_ms || 0).toFixed(0) + "ms", sub: "p95: " + (summary.timing_breakdown?.ttfb_p95_ms || 0).toFixed(0) + "ms" },
 ];
 const cardsEl = document.getElementById("summary-cards");
 cards.forEach(c => {
@@ -181,6 +183,32 @@ new Chart(document.getElementById("latencyDistChart"), {
   options: {
     responsive: true, maintainAspectRatio: false, animation: false,
     plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: "#718096" }, grid: { color: "#2d3748" } },
+      y: { ticks: { color: "#718096", callback: v => v + "ms" }, grid: { color: "#2d3748" } }
+    }
+  }
+});
+
+// Timing breakdown bar chart
+const tb = summary.timing_breakdown || {};
+new Chart(document.getElementById("timingChart"), {
+  type: "bar",
+  data: {
+    labels: ["DNS", "TCP Connect", "TLS Handshake", "TTFB"],
+    datasets: [{
+      label: "avg (ms)",
+      data: [tb.dns_avg_ms||0, tb.tcp_avg_ms||0, tb.tls_avg_ms||0, tb.ttfb_avg_ms||0],
+      backgroundColor: ["#63b3ed","#68d391","#f6ad55","#fc8181"],
+    }, {
+      label: "p95 (ms)",
+      data: [tb.dns_p95_ms||0, tb.tcp_p95_ms||0, tb.tls_p95_ms||0, tb.ttfb_p95_ms||0],
+      backgroundColor: ["#2b6cb0","#276749","#c05621","#c53030"],
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    plugins: { legend: { display: true, labels: { color: "#e2e8f0" } } },
     scales: {
       x: { ticks: { color: "#718096" }, grid: { color: "#2d3748" } },
       y: { ticks: { color: "#718096", callback: v => v + "ms" }, grid: { color: "#2d3748" } }

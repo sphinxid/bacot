@@ -18,6 +18,7 @@ vendor/
 # IDE/editor directories
 .idea/
 .vscode/
+graphify-out/
 *.swp
 *.swo
 

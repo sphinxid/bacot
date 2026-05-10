@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"time"
 
 	"golang.org/x/net/http2"
@@ -18,6 +19,7 @@ type Options struct {
 	MaxRedirects   int
 	HTTP2          bool
 	KeepAlive      bool
+	EnableCookies  bool
 }
 
 // New creates a new *http.Client configured with the given options.
@@ -61,9 +63,16 @@ func New(opts Options) *http.Client {
 		return nil
 	}
 
-	return &http.Client{
+	client := &http.Client{
 		Transport:     transport,
 		CheckRedirect: redirectPolicy,
 		Timeout:       opts.Timeout,
 	}
+
+	if opts.EnableCookies {
+		jar, _ := cookiejar.New(nil)
+		client.Jar = jar
+	}
+
+	return client
 }

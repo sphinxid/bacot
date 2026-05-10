@@ -24,15 +24,28 @@ type JSONReport struct {
 
 // JSONSummary holds the top-level metric aggregates.
 type JSONSummary struct {
-	TotalRequests  int64   `json:"total_requests"`
-	TotalFailures  int64   `json:"total_failures"`
-	FailureRatePct float64 `json:"failure_rate_pct"`
-	RPS            float64 `json:"rps"`
-	BytesSent      int64   `json:"bytes_sent"`
-	BytesRecv      int64   `json:"bytes_received"`
-	ChecksPassed   int64   `json:"checks_passed"`
-	ChecksFailed   int64   `json:"checks_failed"`
-	LatencyStats   JSONLatency `json:"latency"`
+	TotalRequests   int64               `json:"total_requests"`
+	TotalFailures   int64               `json:"total_failures"`
+	FailureRatePct  float64             `json:"failure_rate_pct"`
+	RPS             float64             `json:"rps"`
+	BytesSent       int64               `json:"bytes_sent"`
+	BytesRecv       int64               `json:"bytes_received"`
+	ChecksPassed    int64               `json:"checks_passed"`
+	ChecksFailed    int64               `json:"checks_failed"`
+	LatencyStats    JSONLatency         `json:"latency"`
+	TimingBreakdown JSONTimingBreakdown `json:"timing_breakdown"`
+}
+
+// JSONTimingBreakdown holds average and p95 values (in ms) for each HTTP timing phase.
+type JSONTimingBreakdown struct {
+	DNSAvgMs  float64 `json:"dns_avg_ms"`
+	TCPAvgMs  float64 `json:"tcp_avg_ms"`
+	TLSAvgMs  float64 `json:"tls_avg_ms"`
+	TTFBAvgMs float64 `json:"ttfb_avg_ms"`
+	DNSP95Ms  float64 `json:"dns_p95_ms"`
+	TCPP95Ms  float64 `json:"tcp_p95_ms"`
+	TLSP95Ms  float64 `json:"tls_p95_ms"`
+	TTFBP95Ms float64 `json:"ttfb_p95_ms"`
 }
 
 // JSONLatency holds latency percentile statistics (in ms).
@@ -108,6 +121,11 @@ func buildJSONReport(testName string, collector *metrics.Collector, thresholdRes
 
 	lat := collector.Latency.Snapshot()
 
+	dnsSnap := collector.DNSLatency.Snapshot()
+	tcpSnap := collector.TCPLatency.Snapshot()
+	tlsSnap := collector.TLSLatency.Snapshot()
+	ttfbSnap := collector.TTFBLatency.Snapshot()
+
 	summary := JSONSummary{
 		TotalRequests:  total,
 		TotalFailures:  failures,
@@ -126,6 +144,16 @@ func buildJSONReport(testName string, collector *metrics.Collector, thresholdRes
 			P90Ms: float64(lat.P90) / 1000.0,
 			P95Ms: float64(lat.P95) / 1000.0,
 			P99Ms: float64(lat.P99) / 1000.0,
+		},
+		TimingBreakdown: JSONTimingBreakdown{
+			DNSAvgMs:  dnsSnap.Mean / 1000.0,
+			TCPAvgMs:  tcpSnap.Mean / 1000.0,
+			TLSAvgMs:  tlsSnap.Mean / 1000.0,
+			TTFBAvgMs: ttfbSnap.Mean / 1000.0,
+			DNSP95Ms:  float64(dnsSnap.P95) / 1000.0,
+			TCPP95Ms:  float64(tcpSnap.P95) / 1000.0,
+			TLSP95Ms:  float64(tlsSnap.P95) / 1000.0,
+			TTFBP95Ms: float64(ttfbSnap.P95) / 1000.0,
 		},
 	}
 

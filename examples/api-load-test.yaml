@@ -1,5 +1,10 @@
 name: "API Load Test"
+# target can be overridden via env: TARGET_URL=https://my-api.example.com bacot run api-load-test.yaml
+# Note: os.ExpandEnv is used — set TARGET_URL or the value is used as-is (no bash :- defaults)
 target: "https://httpbin.org"
+
+# Enable per-VU cookie jar (cookies set by Set-Cookie are automatically re-sent)
+cookies: true
 
 # Gradual ramp-up: 5 → 20 VUs over 10 s, sustain, then ramp down
 stages:
@@ -19,6 +24,8 @@ scenarios:
     weight: 70
     headers:
       Accept: application/json
+      # Authorization token injected from environment: API_TOKEN=mytoken bacot run ...
+      Authorization: "Bearer ${API_TOKEN}"
     checks:
       - status == 200
       - duration < 2000
